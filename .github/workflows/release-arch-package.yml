@@ -1,0 +1,144 @@
+name: release-arch-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag or release name to create/update
+        required: true
+        default: arch-mpv-0.41.0-4
+  push:
+    tags:
+      - 'arch-mpv-*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name || inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  arch-package:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    env:
+      PKG_DIR: packaging/arch
+      RELEASE_TITLE: mpv 0.41.0-4 screenshot fix backport
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.release_tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Sy --noconfirm --needed archlinux-keyring
+          pacman -Syu --noconfirm --needed \
+            base-devel git github-cli gnupg meson python-docutils ladspa wayland-protocols ffnvcodec-headers vulkan-headers \
+            alsa-lib desktop-file-utils ffmpeg hicolor-icon-theme jack2 lcms2 libarchive libass libbluray libcdio \
+            libcdio-paranoia libdisplay-info libdrm libdvdnav libdvdread libegl libgl libglvnd libjpeg-turbo \
+            libplacebo libpulse libsixel libva libvdpau libx11 libxext libxkbcommon libxpresent libxrandr libxss \
+            libxv luajit mesa mujs libpipewire rubberband sdl2 openal uchardet vapoursynth vulkan-icd-loader wayland zlib
+
+      - name: Create build user
+        shell: bash
+        run: |
+          set -euo pipefail
+          useradd --create-home --shell /bin/bash builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+
+      - name: Import upstream mpv release key
+        shell: bash
+        run: |
+          set -euo pipefail
+          su builder -c "gpg --batch --import '${GITHUB_WORKSPACE}/${PKG_DIR}/upstream-mpv-release-key.asc'"
+
+      - name: Build package
+        shell: bash
+        run: |
+          set -euo pipefail
+          su builder -c "cd '${GITHUB_WORKSPACE}/${PKG_DIR}' && makepkg -s --noconfirm --cleanbuild"
+
+      - name: Collect release assets
+        id: assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_path="$(find "${PKG_DIR}" -maxdepth 1 -type f -name 'mpv-*.pkg.tar.zst' | sort | head -n 1)"
+          if [[ -z "${package_path}" ]]; then
+            echo "Package asset was not produced." >&2
+            exit 1
+          fi
+
+          (
+            cd "${PKG_DIR}"
+            sha256sum \
+              "$(basename "${package_path}")" \
+              0001-screenshot-correctly-detect-hardware-frame.patch \
+              PKGBUILD \
+              RELEASE_NOTES.md \
+              upstream-mpv-release-key.asc \
+              > SHA256SUMS
+          )
+
+          echo "package_path=${package_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: arch-mpv-${{ steps.meta.outputs.tag }}
+          path: |
+            ${{ steps.assets.outputs.package_path }}
+            ${{ env.PKG_DIR }}/0001-screenshot-correctly-detect-hardware-frame.patch
+            ${{ env.PKG_DIR }}/PKGBUILD
+            ${{ env.PKG_DIR }}/RELEASE_NOTES.md
+            ${{ env.PKG_DIR }}/SHA256SUMS
+            ${{ env.PKG_DIR }}/upstream-mpv-release-key.asc
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ steps.assets.outputs.package_path }}
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh release view "${RELEASE_TAG}" >/dev/null 2>&1 || \
+            gh release create "${RELEASE_TAG}" \
+              --target "${GITHUB_SHA}" \
+              --title "${RELEASE_TITLE}" \
+              --notes-file "${PKG_DIR}/RELEASE_NOTES.md"
+
+          gh release upload "${RELEASE_TAG}" \
+            "${{ steps.assets.outputs.package_path }}" \
+            "${PKG_DIR}/0001-screenshot-correctly-detect-hardware-frame.patch" \
+            "${PKG_DIR}/PKGBUILD" \
+            "${PKG_DIR}/RELEASE_NOTES.md" \
+            "${PKG_DIR}/SHA256SUMS" \
+            "${PKG_DIR}/upstream-mpv-release-key.asc" \
+            --clobber
