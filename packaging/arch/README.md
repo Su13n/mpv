@@ -32,10 +32,16 @@ This should produce a package named like:
 mpv-1:0.41.0-4-x86_64.pkg.tar.zst
 ```
 
+The GitHub release workflow republishes that file under a sanitized name because GitHub artifacts and release assets reject `:` in filenames:
+
+```bash
+mpv-1-0.41.0-4-x86_64.pkg.tar.zst
+```
+
 Install it with:
 
 ```bash
-sudo pacman -U ./mpv-1:0.41.0-4-x86_64.pkg.tar.zst
+sudo pacman -U ./mpv-1-0.41.0-4-x86_64.pkg.tar.zst
 ```
 
 Rollback with:

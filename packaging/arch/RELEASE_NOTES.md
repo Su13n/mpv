@@ -11,7 +11,7 @@ This build fixes that without changing the public `mpv` or `libmpv` interface.
 ## Install
 
 ```bash
-sudo pacman -U ./mpv-1:0.41.0-4-x86_64.pkg.tar.zst
+sudo pacman -U ./mpv-1-0.41.0-4-x86_64.pkg.tar.zst
 ```
 
 ## Rollback
@@ -25,5 +25,5 @@ sudo pacman -S mpv
 If this package was built by GitHub Actions in this repository, you can verify the GitHub attestation with:
 
 ```bash
-gh attestation verify ./mpv-1:0.41.0-4-x86_64.pkg.tar.zst -R OWNER/REPO
+gh attestation verify ./mpv-1-0.41.0-4-x86_64.pkg.tar.zst -R OWNER/REPO
 ```

@@ -90,10 +90,15 @@ jobs:
             exit 1
           fi
 
+          upload_package_path="${package_path//:/-}"
+          if [[ "${upload_package_path}" != "${package_path}" ]]; then
+            cp "${package_path}" "${upload_package_path}"
+          fi
+
           (
             cd "${PKG_DIR}"
             sha256sum \
-              "$(basename "${package_path}")" \
+              "$(basename "${upload_package_path}")" \
               0001-screenshot-correctly-detect-hardware-frame.patch \
               PKGBUILD \
               RELEASE_NOTES.md \
@@ -102,13 +107,14 @@ jobs:
           )
 
           echo "package_path=${package_path}" >> "${GITHUB_OUTPUT}"
+          echo "upload_package_path=${upload_package_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v5
         with:
           name: arch-mpv-${{ steps.meta.outputs.tag }}
           path: |
-            ${{ steps.assets.outputs.package_path }}
+            ${{ steps.assets.outputs.upload_package_path }}
             ${{ env.PKG_DIR }}/0001-screenshot-correctly-detect-hardware-frame.patch
             ${{ env.PKG_DIR }}/PKGBUILD
             ${{ env.PKG_DIR }}/RELEASE_NOTES.md
@@ -118,7 +124,7 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: ${{ steps.assets.outputs.package_path }}
+          subject-path: ${{ steps.assets.outputs.upload_package_path }}
 
       - name: Publish GitHub release
         env:
@@ -135,7 +141,7 @@ jobs:
               --notes-file "${PKG_DIR}/RELEASE_NOTES.md"
 
           gh release upload "${RELEASE_TAG}" \
-            "${{ steps.assets.outputs.package_path }}" \
+            "${{ steps.assets.outputs.upload_package_path }}" \
             "${PKG_DIR}/0001-screenshot-correctly-detect-hardware-frame.patch" \
             "${PKG_DIR}/PKGBUILD" \
             "${PKG_DIR}/RELEASE_NOTES.md" \
