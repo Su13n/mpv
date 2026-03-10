@@ -129,18 +129,21 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
 
-          gh release view "${RELEASE_TAG}" >/dev/null 2>&1 || \
+          gh release view "${RELEASE_TAG}" --repo "${GH_REPO}" >/dev/null 2>&1 || \
             gh release create "${RELEASE_TAG}" \
+              --repo "${GH_REPO}" \
               --target "${GITHUB_SHA}" \
               --title "${RELEASE_TITLE}" \
               --notes-file "${PKG_DIR}/RELEASE_NOTES.md"
 
           gh release upload "${RELEASE_TAG}" \
+            --repo "${GH_REPO}" \
             "${{ steps.assets.outputs.upload_package_path }}" \
             "${PKG_DIR}/0001-screenshot-correctly-detect-hardware-frame.patch" \
             "${PKG_DIR}/PKGBUILD" \
